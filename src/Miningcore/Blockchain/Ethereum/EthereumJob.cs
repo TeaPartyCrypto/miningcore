@@ -77,7 +77,7 @@ public class EthereumJob
         var resultValue = new uint256(resultBytes);
         var resultValueBig = resultBytes.AsSpan().ToBigInteger();
         var shareDiff = (double) BigInteger.Divide(EthereumConstants.BigMaxValue, resultValueBig) / EthereumConstants.Pow2x32;
-        var stratumDifficulty = context.Difficulty;
+        var stratumDifficulty =  context.Difficulty;
         var ratio = shareDiff / stratumDifficulty;
         var isBlockCandidate = resultValue <= blockTarget;
 

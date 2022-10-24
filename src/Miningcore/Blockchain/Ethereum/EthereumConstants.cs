@@ -17,6 +17,7 @@ public class EthereumConstants
     public const string EthereumStratumVersion = "EthereumStratum/1.0.0";
     public const decimal StaticTransactionFeeReserve = 0.0025m; // in ETH
     public const string BlockTypeUncle = "uncle";
+    public static ulong StratumDiffFactor = 10;
 
 #if !DEBUG
     public const int MinPayoutPeerCount = 1;
@@ -32,6 +33,7 @@ public class EthereumConstants
     public const decimal HomesteadBlockReward = 5.0m;
     public const decimal ByzantiumBlockReward = 3.0m;
     public const decimal ConstantinopleReward = 2.0m;
+    public const decimal PinkchainReward = 1.0m;
 
     public const int MinConfimations = 16;
 
@@ -52,6 +54,8 @@ public enum EthereumNetworkType
     Ropsten = 3,
     Callisto = 820,
     MainPow = 10001,
+    PinkChain = 10101,
+    MineOnlium = 54321,
 
     Unknown = -1,
 }
@@ -62,6 +66,8 @@ public enum GethChainType
     Ropsten,
     Callisto,
     MainPow = 10001,
+    PinkChain = 10101,
+    MineOnlium = 54321,
 
     Unknown = -1,
 }

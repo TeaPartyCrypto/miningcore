@@ -48,6 +48,7 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
 
     private readonly IComponentContext ctx;
     private RpcClient rpcClient;
+    private RpcClient walletClient;
     private EthereumNetworkType networkType;
     private GethChainType chainType;
     private const int BlockSearchOffset = 50;
@@ -71,6 +72,7 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
         var jsonSerializerSettings = ctx.Resolve<JsonSerializerSettings>();
 
         rpcClient = new RpcClient(pc.Daemons.First(x => string.IsNullOrEmpty(x.Category)), jsonSerializerSettings, messageBus, pc.Id);
+        walletClient = new RpcClient(pc.Daemons.First(x => x.Category?.ToLower() == "wallet"), jsonSerializerSettings, messageBus, pc.Id);
 
         await DetectChainAsync(ct);
     }
@@ -125,7 +127,7 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
                         var gasUsed = blockHashResponse.Response.GasUsed;
 
                         var burnedFee = (decimal) 0;
-                        if(extraPoolConfig?.ChainTypeOverride == "Ethereum")
+                        if(extraPoolConfig?.ChainTypeOverride == "Ethereum" || extraPoolConfig?.ChainTypeOverride == "MainPow" || extraPoolConfig?.ChainTypeOverride == "PinkChain" || extraPoolConfig?.ChainTypeOverride == "MineOnlium")
                             burnedFee = (baseGas * gasUsed / EthereumConstants.Wei);
 
                         block.Hash = blockHash;
@@ -237,7 +239,7 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
         // ensure we have peers
         var infoResponse = await rpcClient.ExecuteAsync<string>(logger, EC.GetPeerCount, ct);
 
-        if((networkType == EthereumNetworkType.Main || networkType == EthereumNetworkType.MainPow) &&
+        if((networkType == EthereumNetworkType.Main || networkType == EthereumNetworkType.MainPow || networkType == EthereumNetworkType.PinkChain || extraPoolConfig?.ChainTypeOverride == "MineOnlium") &&
            (infoResponse.Error != null || string.IsNullOrEmpty(infoResponse.Response) ||
                infoResponse.Response.IntegralFromHex<int>() < EthereumConstants.MinPayoutPeerCount))
         {
@@ -318,6 +320,12 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
             case GethChainType.Callisto:
                 return CallistoConstants.BaseRewardInitial * (CallistoConstants.TreasuryPercent / 100);
 
+            case GethChainType.MineOnlium:
+                return EthereumConstants.ConstantinopleReward;
+
+            case GethChainType.PinkChain:
+                return EthereumConstants.PinkchainReward;
+
             default:
                 throw new Exception("Unable to determine block reward: Unsupported chain type");
         }
@@ -393,15 +401,42 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
             Value = amount.ToString("x").TrimStart('0'),
         };
 
-        if(extraPoolConfig?.ChainTypeOverride == "Ethereum")
+        if(extraPoolConfig?.ChainTypeOverride == "PinkChain")
+        {
+            request.Gas = extraConfig.Gas;
+        }
+
+        if(extraPoolConfig?.ChainTypeOverride == "MineOnlium")
         {
             var maxPriorityFeePerGas = await rpcClient.ExecuteAsync<string>(logger, EC.MaxPriorityFeePerGas, ct);
-            request.Gas = extraConfig.Gas;
-            request.MaxPriorityFeePerGas = maxPriorityFeePerGas.Response.IntegralFromHex<ulong>();
-            request.MaxFeePerGas = extraConfig.MaxFeePerGas;
+            request = new SendTransactionRequestMO
+            {
+            From = poolConfig.Address,
+            To = balance.Address,
+            Value = amount.ToString("x").TrimStart('0'),
+            Gas = extraConfig.Gas,
+            MaxFeePerGas = extraConfig.MaxFeePerGas,
+            gasPrice = extraConfig.MaxFeePerGas,
+            };
+        }
+
+        if(extraPoolConfig?.ChainTypeOverride == "Ethereum" || extraPoolConfig?.ChainTypeOverride == "MainPow")
+        {
+            var maxPriorityFeePerGas = await rpcClient.ExecuteAsync<string>(logger, EC.MaxPriorityFeePerGas, ct);
+            request = new SendTransactionRequestEth
+            {
+            From = poolConfig.Address,
+            To = balance.Address,
+            Value = amount.ToString("x").TrimStart('0'),
+            Gas = extraConfig.Gas,
+            MaxPriorityFeePerGas = maxPriorityFeePerGas.Response.IntegralFromHex<ulong>(),
+            MaxFeePerGas = extraConfig.MaxFeePerGas,
+            };
         }
 
         var response = await rpcClient.ExecuteAsync<string>(logger, EC.SendTx, ct, new[] { request });
+        if(walletClient != null) 
+        response = await walletClient.ExecuteAsync<string>(logger, EC.SendTx, ct, new[] { request });
 
         if(response.Error != null)
             throw new Exception($"{EC.SendTx} returned error: {response.Error.Message} code {response.Error.Code}");
