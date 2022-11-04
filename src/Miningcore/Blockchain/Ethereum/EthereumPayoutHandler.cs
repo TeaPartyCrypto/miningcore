@@ -51,7 +51,7 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
     private RpcClient walletClient;
     private EthereumNetworkType networkType;
     private GethChainType chainType;
-    private const int BlockSearchOffset = 50;
+    private const int BlockSearchOffset = 10;
     private EthereumPoolConfigExtra extraPoolConfig;
     private EthereumPoolPaymentProcessingConfigExtra extraConfig;
 
@@ -72,7 +72,10 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
         var jsonSerializerSettings = ctx.Resolve<JsonSerializerSettings>();
 
         rpcClient = new RpcClient(pc.Daemons.First(x => string.IsNullOrEmpty(x.Category)), jsonSerializerSettings, messageBus, pc.Id);
-        walletClient = new RpcClient(pc.Daemons.First(x => x.Category?.ToLower() == "wallet"), jsonSerializerSettings, messageBus, pc.Id);
+
+        if(extraPoolConfig?.ChainTypeOverride == "MineOnlium") {
+           walletClient = new RpcClient(pc.Daemons.First(x => x.Category?.ToLower() == "wallet"), jsonSerializerSettings, messageBus, pc.Id);
+        }
 
         await DetectChainAsync(ct);
     }
@@ -127,7 +130,7 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
                         var gasUsed = blockHashResponse.Response.GasUsed;
 
                         var burnedFee = (decimal) 0;
-                        if(extraPoolConfig?.ChainTypeOverride == "Ethereum" || extraPoolConfig?.ChainTypeOverride == "MainPow" || extraPoolConfig?.ChainTypeOverride == "PinkChain" || extraPoolConfig?.ChainTypeOverride == "MineOnlium")
+                        if(extraPoolConfig?.ChainTypeOverride == "Ethereum" || extraPoolConfig?.ChainTypeOverride == "Main" || extraPoolConfig?.ChainTypeOverride == "MainPow" || extraPoolConfig?.ChainTypeOverride == "PinkChain" || extraPoolConfig?.ChainTypeOverride == "EtherOne" || extraPoolConfig?.ChainTypeOverride == "MineOnlium")
                             burnedFee = (baseGas * gasUsed / EthereumConstants.Wei);
 
                         block.Hash = blockHash;
@@ -239,7 +242,7 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
         // ensure we have peers
         var infoResponse = await rpcClient.ExecuteAsync<string>(logger, EC.GetPeerCount, ct);
 
-        if((networkType == EthereumNetworkType.Main || networkType == EthereumNetworkType.MainPow || networkType == EthereumNetworkType.PinkChain || extraPoolConfig?.ChainTypeOverride == "MineOnlium") &&
+        if((networkType == EthereumNetworkType.Main || networkType == EthereumNetworkType.MainPow || extraPoolConfig?.ChainTypeOverride == "PinkChain" || extraPoolConfig?.ChainTypeOverride == "EtherOne" || extraPoolConfig?.ChainTypeOverride == "MineOnlium") &&
            (infoResponse.Error != null || string.IsNullOrEmpty(infoResponse.Response) ||
                infoResponse.Response.IntegralFromHex<int>() < EthereumConstants.MinPayoutPeerCount))
         {
@@ -321,10 +324,13 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
                 return CallistoConstants.BaseRewardInitial * (CallistoConstants.TreasuryPercent / 100);
 
             case GethChainType.MineOnlium:
-                return EthereumConstants.ConstantinopleReward;
+                return MineOnliumConstants.BaseRewardInitial;
+
+            case GethChainType.EtherOne:
+                return EthOneConstants.BaseRewardInitial;
 
             case GethChainType.PinkChain:
-                return EthereumConstants.PinkchainReward;
+               return PinkConstants.BaseRewardInitial;
 
             default:
                 throw new Exception("Unable to determine block reward: Unsupported chain type");
@@ -401,42 +407,44 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
             Value = amount.ToString("x").TrimStart('0'),
         };
 
+        if(extraPoolConfig?.ChainTypeOverride == "Ethereum" || extraPoolConfig?.ChainTypeOverride == "Main" || extraPoolConfig?.ChainTypeOverride == "MainPow" || extraPoolConfig?.ChainTypeOverride == "EtherOne" )
+        {
+            var maxPriorityFeePerGas = await rpcClient.ExecuteAsync<string>(logger, EC.MaxPriorityFeePerGas, ct);
+            request.Gas = extraConfig.Gas;
+            request.MaxPriorityFeePerGas = maxPriorityFeePerGas.Response.IntegralFromHex<ulong>();
+            request.MaxFeePerGas = extraConfig.MaxFeePerGas;
+        }
+
+        RpcResponse<string> response;
+
         if(extraPoolConfig?.ChainTypeOverride == "PinkChain")
         {
-            request.Gas = extraConfig.Gas;
-        }
-
-        if(extraPoolConfig?.ChainTypeOverride == "MineOnlium")
-        {
-            var maxPriorityFeePerGas = await rpcClient.ExecuteAsync<string>(logger, EC.MaxPriorityFeePerGas, ct);
-            request = new SendTransactionRequestMO
+            var requestPink = new SendTransactionRequestPink
             {
-            From = poolConfig.Address,
-            To = balance.Address,
-            Value = amount.ToString("x").TrimStart('0'),
-            Gas = extraConfig.Gas,
-            MaxFeePerGas = extraConfig.MaxFeePerGas,
-            gasPrice = extraConfig.MaxFeePerGas,
+                From = poolConfig.Address,
+                To = balance.Address,
+                Value = amount.ToString("x").TrimStart('0'),
+                Gas = extraConfig.Gas
             };
+            response = await rpcClient.ExecuteAsync<string>(logger, EC.SendTx, ct, new[] { requestPink });
         }
 
-        if(extraPoolConfig?.ChainTypeOverride == "Ethereum" || extraPoolConfig?.ChainTypeOverride == "MainPow")
+        else if(extraPoolConfig?.ChainTypeOverride == "MineOnlium")
         {
-            var maxPriorityFeePerGas = await rpcClient.ExecuteAsync<string>(logger, EC.MaxPriorityFeePerGas, ct);
-            request = new SendTransactionRequestEth
+            var requestMineonlium = new SendTransactionRequestMineonlium
             {
-            From = poolConfig.Address,
-            To = balance.Address,
-            Value = amount.ToString("x").TrimStart('0'),
-            Gas = extraConfig.Gas,
-            MaxPriorityFeePerGas = maxPriorityFeePerGas.Response.IntegralFromHex<ulong>(),
-            MaxFeePerGas = extraConfig.MaxFeePerGas,
+                From = poolConfig.Address,
+                To = balance.Address,
+                Value = amount.ToString("x").TrimStart('0'),
+                Gas = extraConfig.Gas,
+                MaxFeePerGas = extraConfig.MaxFeePerGas,
+                GasPrice = extraConfig.MaxFeePerGas,
             };
+            response = await walletClient.ExecuteAsync<string>(logger, EC.SendTx, ct, new[] { requestMineonlium });
         }
-
-        var response = await rpcClient.ExecuteAsync<string>(logger, EC.SendTx, ct, new[] { request });
-        if(walletClient != null) 
-        response = await walletClient.ExecuteAsync<string>(logger, EC.SendTx, ct, new[] { request });
+        else {
+            response = await rpcClient.ExecuteAsync<string>(logger, EC.SendTx, ct, new[] { request });
+        }
 
         if(response.Error != null)
             throw new Exception($"{EC.SendTx} returned error: {response.Error.Message} code {response.Error.Code}");
