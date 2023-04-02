@@ -34,6 +34,7 @@ public class EthereumConstants
     public const decimal ByzantiumBlockReward = 3.0m;
     public const decimal ConstantinopleReward = 2.0m;
     public const decimal PinkchainReward = 1.0m;
+    
 
     public const int MinConfimations = 16;
 
@@ -62,7 +63,10 @@ public class MineOnliumConstants
 {
     public const decimal BaseRewardInitial = 2.0m;
 }
-
+public class PartyConstants
+{
+    public const decimal BaseRewardInitial = .1m;
+}
 
 public enum EthereumNetworkType
 {
@@ -70,6 +74,7 @@ public enum EthereumNetworkType
     Ropsten = 3,
     Callisto = 820,
     MainPow = 10001,
+    PartyChain = 1773,
     EtherOne = 4949,
     PinkChain = 10100,
     MineOnlium = 54321,
@@ -83,6 +88,7 @@ public enum GethChainType
     Ropsten,
     Callisto,
     MainPow = 10001,
+    PartyChain = 1773,
     EtherOne = 4949,
     PinkChain = 10100,
     MineOnlium = 54321,

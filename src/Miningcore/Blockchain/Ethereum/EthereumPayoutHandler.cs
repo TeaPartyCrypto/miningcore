@@ -130,7 +130,7 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
                         var gasUsed = blockHashResponse.Response.GasUsed;
 
                         var burnedFee = (decimal) 0;
-                        if(extraPoolConfig?.ChainTypeOverride == "Ethereum" || extraPoolConfig?.ChainTypeOverride == "Main" || extraPoolConfig?.ChainTypeOverride == "MainPow" || extraPoolConfig?.ChainTypeOverride == "PinkChain" || extraPoolConfig?.ChainTypeOverride == "EtherOne" || extraPoolConfig?.ChainTypeOverride == "MineOnlium")
+                        if(extraPoolConfig?.ChainTypeOverride == "Ethereum" || extraPoolConfig?.ChainTypeOverride == "Main" || extraPoolConfig?.ChainTypeOverride == "MainPow" || extraPoolConfig?.ChainTypeOverride == "PinkChain" || extraPoolConfig?.ChainTypeOverride == "EtherOne" || extraPoolConfig?.ChainTypeOverride == "MineOnlium" || extraPoolConfig?.ChainTypeOverride == "PartyChain")
                             burnedFee = (baseGas * gasUsed / EthereumConstants.Wei);
 
                         block.Hash = blockHash;
@@ -242,7 +242,7 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
         // ensure we have peers
         var infoResponse = await rpcClient.ExecuteAsync<string>(logger, EC.GetPeerCount, ct);
 
-        if((networkType == EthereumNetworkType.Main || networkType == EthereumNetworkType.MainPow || extraPoolConfig?.ChainTypeOverride == "PinkChain" || extraPoolConfig?.ChainTypeOverride == "EtherOne" || extraPoolConfig?.ChainTypeOverride == "MineOnlium") &&
+        if((networkType == EthereumNetworkType.Main || networkType == EthereumNetworkType.MainPow || extraPoolConfig?.ChainTypeOverride == "PinkChain" || extraPoolConfig?.ChainTypeOverride == "EtherOne" || extraPoolConfig?.ChainTypeOverride == "MineOnlium" || extraPoolConfig?.ChainTypeOverride == "PartyChain") &&
            (infoResponse.Error != null || string.IsNullOrEmpty(infoResponse.Response) ||
                infoResponse.Response.IntegralFromHex<int>() < EthereumConstants.MinPayoutPeerCount))
         {
@@ -331,6 +331,9 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
 
             case GethChainType.PinkChain:
                return PinkConstants.BaseRewardInitial;
+
+            case GethChainType.PartyChain:
+               return PartyConstants.BaseRewardInitial;
 
             default:
                 throw new Exception("Unable to determine block reward: Unsupported chain type");
@@ -429,6 +432,8 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
             response = await rpcClient.ExecuteAsync<string>(logger, EC.SendTx, ct, new[] { requestPink });
         }
 
+        
+
         else if(extraPoolConfig?.ChainTypeOverride == "MineOnlium")
         {
             var requestMineonlium = new SendTransactionRequestMineonlium
@@ -442,6 +447,8 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
             };
             response = await walletClient.ExecuteAsync<string>(logger, EC.SendTx, ct, new[] { requestMineonlium });
         }
+
+        
         else {
             response = await rpcClient.ExecuteAsync<string>(logger, EC.SendTx, ct, new[] { request });
         }
